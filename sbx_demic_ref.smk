@@ -28,9 +28,9 @@ rule example_rule:
     benchmark:
         BENCHMARK_FP / "example_rule.tsv"
     params:
-        opts=Cfg["sbx_template"]["example_rule_options"],
+        opts=Cfg["sbx_demic_ref"]["example_rule_options"],
     conda:
-        "envs/sbx_template_env.yml"
+        "envs/sbx_demic_ref_env.yml"
     shell:
         "cat {params.opts} {input} >> {output} 2> {log}"
 
@@ -46,6 +46,6 @@ rule example_with_script:
     benchmark:
         BENCHMARK_FP / "example_with_script.tsv"
     conda:
-        "envs/sbx_template_env.yml"
+        "envs/sbx_demic_ref_env.yml"
     script:
         "scripts/example_with_script.py"
