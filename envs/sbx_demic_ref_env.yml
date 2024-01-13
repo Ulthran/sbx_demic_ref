@@ -2,3 +2,6 @@ name: sbx_demic_ref
 channels:
   - conda-forge
   - bioconda
+dependencies:
+  - bowtie2
+  - samtools

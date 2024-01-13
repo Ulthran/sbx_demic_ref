@@ -8,44 +8,78 @@ except NameError:
     LOG_FP = output_subdir(Cfg, "logs")
 
 
+DEMIC_FP = MAPPING_FP / "demic"
+
+
 localrules:
-    all_template,
+    all_demic_ref,
 
 
-rule all_template:
+rule all_demic_ref:
     input:
-        QC_FP / "mush" / "big_file.txt",
+        expand(DEMIC_FP / "ref_coverage" / "{sample}.txt", sample=Samples.keys()),
+        expand(DEMIC_FP / "ref_coverage" / "{sample}.depth", sample=Samples.keys()),
+        expand(DEMIC_FP / "ref_coverage" / "{sample}.tsv", sample=Samples.keys()),
 
 
-rule example_rule:
-    """Takes in cleaned .fastq.gz and mushes them all together into a file"""
+rule bowtie2_build_ref:
     input:
-        expand(QC_FP / "cleaned" / "{sample}_{rp}.fastq.gz", sample=Samples, rp=Pairs),
+        Cfg["sbx_demic_ref"]["refs"],
     output:
-        QC_FP / "mush" / "big_file1.txt",
-    log:
-        LOG_FP / "example_rule.log",
-    benchmark:
-        BENCHMARK_FP / "example_rule.tsv"
-    params:
-        opts=Cfg["sbx_demic_ref"]["example_rule_options"],
+        Cfg["sbx_demic_ref"]["refs"] + ".1.bt2",
     conda:
         "envs/sbx_demic_ref_env.yml"
     shell:
-        "cat {params.opts} {input} >> {output} 2> {log}"
+        """
+        bowtie2-build {input} {input}
+        """
 
-
-rule example_with_script:
-    """Take in big_file1 and copy it to big_file using a python script"""
+rule bowtie2_ref:
     input:
-        QC_FP / "mush" / "big_file1.txt",
+        fasta=Cfg["sbx_demic_ref"]["refs"],
+        index=Cfg["sbx_demic_ref"]["refs"] + ".1.bt2",
+        reads=expand(
+            QC_FP / "decontam" / "{{sample}}_{rp}.fastq.gz",
+            rp=Pairs,
+        ),
     output:
-        QC_FP / "mush" / "big_file.txt",
-    log:
-        LOG_FP / "example_with_script.log",
-    benchmark:
-        BENCHMARK_FP / "example_with_script.tsv"
+        DEMIC_FP / "ref_mapping" / "{sample}.sam",
     conda:
         "envs/sbx_demic_ref_env.yml"
-    script:
-        "scripts/example_with_script.py"
+    shell:
+        """
+        bowtie2 -q -x {input.fasta} -1 {input.reads[0]} -2 {input.reads[1]} -S {output}
+        """
+
+
+rule samtools_sort_ref:
+    input:
+        DEMIC_FP / "ref_mapping" / "{sample}.sam",
+    output:
+        sorted_files=DEMIC_FP / "ref_sorted" / "{sample}.sam",
+        temp_files=temp(DEMIC_FP / "ref_sorted" / "{sample}-temp.sam")
+    threads: 4
+    conda:
+        "envs/sbx_demic_ref_env.yml"
+    shell:
+        """
+        samtools view -@ {threads} -bS {input} | samtools sort -@ {threads} - -o {output.temp_files}
+        samtools view -@ {threads} -h {output.temp_files} > {output.sorted_files}
+        """
+
+
+rule samtools_coverage_ref:
+    input:
+        DEMIC_FP / "ref_sorted" / "{sample}.sam",
+    output:
+        hist=DEMIC_FP / "ref_coverage" / "{sample}.txt",
+        depth=DEMIC_FP / "ref_coverage" / "{sample}.depth",
+        tsv=DEMIC_FP / "ref_coverage" / "{sample}.tsv",
+    conda:
+        "envs/sbx_demic_ref_env.yml"
+    shell:
+        """
+        samtools coverage {input} -m -o {output.hist}
+        samtools coverage {input} -D -o {output.depth}
+        samtools coverage {input} -o {output.tsv}
+        """
